@@ -498,7 +498,16 @@ def seed_if_empty() -> None:
         )
 
         student_ids = [row["id"] for row in all_rows(conn, "SELECT id FROM students ORDER BY id")]
-        offense_ids = [row["id"] for row in all_rows(conn, "SELECT id FROM offenses ORDER BY id")]
+        official_codes = [offense[0] for offense in OFFICIAL_OFFENSES]
+        placeholders = ", ".join("?" for _ in official_codes)
+        offense_ids = [
+            row["id"]
+            for row in all_rows(
+                conn,
+                f"SELECT id FROM offenses WHERE code IN ({placeholders}) ORDER BY code",
+                tuple(official_codes),
+            )
+        ]
         statuses = ["Open", "Parent Notified", "Under Review", "Resolved"]
         reporters = ["Guidance Office", "Class Adviser", "Subject Teacher", "Prefect of Discipline"]
         start = date.today().replace(month=1, day=8)
@@ -506,7 +515,7 @@ def seed_if_empty() -> None:
         incidents = []
         for i in range(160):
             incident_date = start + timedelta(days=random.randint(0, 195))
-            offense_id = offense_ids[(i * 7 + random.randint(0, 4)) % len(offense_ids)]
+            offense_id = offense_ids[i % len(offense_ids)]
             action = one(conn, "SELECT recommended_action FROM offenses WHERE id = ?", (offense_id,))["recommended_action"]
             incidents.append(
                 (
