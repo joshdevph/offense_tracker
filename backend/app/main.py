@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 APP_NAME = "Offense Tracker"
 PORTAL_TOKEN_TTL_SECONDS = 8 * 60 * 60
+ADMIN_TOKEN_TTL_SECONDS = 12 * 60 * 60
 PASSWORD_ITERATIONS = 120_000
 STUDENT_COLUMNS = (
     "id, student_no, first_name, last_name, grade, section, adviser, status, created_at, updated_at"
@@ -53,6 +54,11 @@ class StudentIn(BaseModel):
 
 class BulkDeleteIn(BaseModel):
     ids: list[int] = Field(..., min_length=1, max_length=500)
+
+
+class AdminLoginIn(BaseModel):
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
 
 
 class StudentLoginIn(BaseModel):
@@ -127,6 +133,54 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 def token_secret() -> bytes:
     return os.getenv("PORTAL_SECRET_KEY", "offense-tracker-local-development-key").encode()
+
+
+def configured_admin_username() -> str:
+    return os.getenv("ADMIN_USERNAME", "admin")
+
+
+def configured_admin_password() -> str:
+    return os.getenv("ADMIN_PASSWORD", "admin")
+
+
+def encode_admin_token(username: str) -> str:
+    payload = {
+        "sub": username,
+        "role": "admin",
+        "exp": int(time.time()) + ADMIN_TOKEN_TTL_SECONDS,
+    }
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode()
+    ).decode().rstrip("=")
+    signature = hmac.new(token_secret(), f"admin.{encoded}".encode(), hashlib.sha256).digest()
+    encoded_signature = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+    return f"{encoded}.{encoded_signature}"
+
+
+def decode_admin_token(token: str) -> str:
+    try:
+        encoded, encoded_signature = token.split(".", 1)
+        signature_padding = "=" * (-len(encoded_signature) % 4)
+        supplied_signature = base64.urlsafe_b64decode(encoded_signature + signature_padding)
+        expected_signature = hmac.new(token_secret(), f"admin.{encoded}".encode(), hashlib.sha256).digest()
+        if not hmac.compare_digest(supplied_signature, expected_signature):
+            raise ValueError("Invalid signature")
+        payload_padding = "=" * (-len(encoded) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(encoded + payload_padding))
+        if payload.get("role") != "admin":
+            raise ValueError("Invalid role")
+        if int(payload["exp"]) < int(time.time()):
+            raise ValueError("Expired token")
+        return str(payload["sub"])
+    except (binascii.Error, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=401, detail="Admin login is required")
+
+
+def require_admin(authorization: str = Header(default="")) -> str:
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="Admin login is required")
+    return decode_admin_token(token)
 
 
 def encode_portal_token(student_id: int) -> str:
@@ -550,6 +604,22 @@ def health() -> dict:
     return {"status": "ok", "name": APP_NAME}
 
 
+@app.post("/api/admin/login")
+def admin_login(payload: AdminLoginIn) -> dict:
+    expected_username = configured_admin_username()
+    expected_password = configured_admin_password()
+    supplied_username = payload.username.strip()
+    valid_username = hmac.compare_digest(supplied_username, expected_username)
+    valid_password = hmac.compare_digest(payload.password, expected_password)
+    if not valid_username or not valid_password:
+        raise HTTPException(status_code=401, detail="Invalid admin username or password")
+    return {
+        "access_token": encode_admin_token(expected_username),
+        "token_type": "bearer",
+        "username": expected_username,
+    }
+
+
 @app.post("/api/student-portal/login")
 def student_portal_login(payload: StudentLoginIn) -> dict:
     with db() as conn:
@@ -615,6 +685,7 @@ def list_students(
     section: str = "",
     status: str = "",
     limit: int = Query(500, ge=1, le=1000),
+    _admin: str = Depends(require_admin),
 ) -> list[dict]:
     query = f"SELECT {STUDENT_COLUMNS} FROM students WHERE 1=1"
     params: list[str | int] = []
@@ -638,7 +709,7 @@ def list_students(
 
 
 @app.post("/api/students", status_code=201)
-def create_student(payload: StudentIn) -> dict:
+def create_student(payload: StudentIn, _admin: str = Depends(require_admin)) -> dict:
     initial_password = default_student_password(payload.student_no, payload.last_name)
     with db() as conn:
         try:
@@ -671,7 +742,10 @@ def create_student(payload: StudentIn) -> dict:
 
 
 @app.post("/api/students/import")
-async def import_students(file: UploadFile = File(...)) -> dict:
+async def import_students(
+    file: UploadFile = File(...),
+    _admin: str = Depends(require_admin),
+) -> dict:
     if not (file.filename or "").lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Please upload an Excel .xlsx file")
     headers, records = parse_workbook(await file.read())
@@ -752,7 +826,11 @@ async def import_students(file: UploadFile = File(...)) -> dict:
 
 
 @app.put("/api/students/{student_id}")
-def update_student(student_id: int, payload: StudentIn) -> dict:
+def update_student(
+    student_id: int,
+    payload: StudentIn,
+    _admin: str = Depends(require_admin),
+) -> dict:
     initial_password = default_student_password(payload.student_no, payload.last_name)
     with db() as conn:
         if not one(conn, "SELECT id FROM students WHERE id = ?", (student_id,)):
@@ -785,7 +863,7 @@ def update_student(student_id: int, payload: StudentIn) -> dict:
 
 
 @app.post("/api/students/bulk-delete")
-def bulk_delete_students(payload: BulkDeleteIn) -> dict:
+def bulk_delete_students(payload: BulkDeleteIn, _admin: str = Depends(require_admin)) -> dict:
     student_ids = list(dict.fromkeys(payload.ids))
     placeholders = ", ".join("?" for _ in student_ids)
 
@@ -837,7 +915,7 @@ def bulk_delete_students(payload: BulkDeleteIn) -> dict:
 
 
 @app.delete("/api/students/{student_id}", status_code=204)
-def delete_student(student_id: int) -> None:
+def delete_student(student_id: int, _admin: str = Depends(require_admin)) -> None:
     with db() as conn:
         try:
             conn.execute("DELETE FROM students WHERE id = ?", (student_id,))
@@ -846,7 +924,11 @@ def delete_student(student_id: int) -> None:
 
 
 @app.get("/api/offenses")
-def list_offenses(category: str = "", active_only: bool = False) -> list[dict]:
+def list_offenses(
+    category: str = "",
+    active_only: bool = False,
+    _admin: str = Depends(require_admin),
+) -> list[dict]:
     query = "SELECT * FROM offenses WHERE 1=1"
     params: list[str | int] = []
     if category:
@@ -860,7 +942,7 @@ def list_offenses(category: str = "", active_only: bool = False) -> list[dict]:
 
 
 @app.post("/api/offenses", status_code=201)
-def create_offense(payload: OffenseIn) -> dict:
+def create_offense(payload: OffenseIn, _admin: str = Depends(require_admin)) -> dict:
     with db() as conn:
         try:
             cur = conn.execute(
@@ -883,7 +965,11 @@ def create_offense(payload: OffenseIn) -> dict:
 
 
 @app.put("/api/offenses/{offense_id}")
-def update_offense(offense_id: int, payload: OffenseIn) -> dict:
+def update_offense(
+    offense_id: int,
+    payload: OffenseIn,
+    _admin: str = Depends(require_admin),
+) -> dict:
     with db() as conn:
         if not one(conn, "SELECT id FROM offenses WHERE id = ?", (offense_id,)):
             raise HTTPException(status_code=404, detail="Offense not found")
@@ -908,7 +994,7 @@ def update_offense(offense_id: int, payload: OffenseIn) -> dict:
 
 
 @app.post("/api/offenses/bulk-delete")
-def bulk_delete_offenses(payload: BulkDeleteIn) -> dict:
+def bulk_delete_offenses(payload: BulkDeleteIn, _admin: str = Depends(require_admin)) -> dict:
     offense_ids = list(dict.fromkeys(payload.ids))
     placeholders = ", ".join("?" for _ in offense_ids)
 
@@ -960,7 +1046,7 @@ def bulk_delete_offenses(payload: BulkDeleteIn) -> dict:
 
 
 @app.delete("/api/offenses/{offense_id}", status_code=204)
-def delete_offense(offense_id: int) -> None:
+def delete_offense(offense_id: int, _admin: str = Depends(require_admin)) -> None:
     with db() as conn:
         try:
             conn.execute("DELETE FROM offenses WHERE id = ?", (offense_id,))
@@ -987,6 +1073,7 @@ def list_incidents(
     category: str = "",
     status: str = "",
     limit: int = Query(500, ge=1, le=1000),
+    _admin: str = Depends(require_admin),
 ) -> list[dict]:
     query = """
         SELECT i.*, s.student_no, s.first_name, s.last_name, s.grade, s.section,
@@ -1017,7 +1104,7 @@ def list_incidents(
 
 
 @app.post("/api/incidents", status_code=201)
-def create_incident(payload: IncidentIn) -> dict:
+def create_incident(payload: IncidentIn, _admin: str = Depends(require_admin)) -> dict:
     with db() as conn:
         if not one(conn, "SELECT id FROM students WHERE id = ?", (payload.student_id,)):
             raise HTTPException(status_code=404, detail="Student not found")
@@ -1048,7 +1135,10 @@ def create_incident(payload: IncidentIn) -> dict:
 
 
 @app.post("/api/incidents/import")
-async def import_incidents(file: UploadFile = File(...)) -> dict:
+async def import_incidents(
+    file: UploadFile = File(...),
+    _admin: str = Depends(require_admin),
+) -> dict:
     if not (file.filename or "").lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Please upload an Excel .xlsx file")
     headers, records = parse_workbook(await file.read())
@@ -1136,7 +1226,11 @@ async def import_incidents(file: UploadFile = File(...)) -> dict:
 
 
 @app.put("/api/incidents/{incident_id}")
-def update_incident(incident_id: int, payload: IncidentIn) -> dict:
+def update_incident(
+    incident_id: int,
+    payload: IncidentIn,
+    _admin: str = Depends(require_admin),
+) -> dict:
     with db() as conn:
         if not one(conn, "SELECT id FROM incidents WHERE id = ?", (incident_id,)):
             raise HTTPException(status_code=404, detail="Incident not found")
@@ -1167,7 +1261,7 @@ def update_incident(incident_id: int, payload: IncidentIn) -> dict:
 
 
 @app.post("/api/incidents/bulk-delete")
-def bulk_delete_incidents(payload: BulkDeleteIn) -> dict:
+def bulk_delete_incidents(payload: BulkDeleteIn, _admin: str = Depends(require_admin)) -> dict:
     incident_ids = list(dict.fromkeys(payload.ids))
     placeholders = ", ".join("?" for _ in incident_ids)
 
@@ -1190,7 +1284,7 @@ def bulk_delete_incidents(payload: BulkDeleteIn) -> dict:
 
 
 @app.delete("/api/incidents/{incident_id}", status_code=204)
-def delete_incident(incident_id: int) -> None:
+def delete_incident(incident_id: int, _admin: str = Depends(require_admin)) -> None:
     with db() as conn:
         conn.execute("DELETE FROM incidents WHERE id = ?", (incident_id,))
 
@@ -1200,7 +1294,10 @@ def report_year(value: int | None) -> int:
 
 
 @app.get("/api/reports/dashboard")
-def dashboard_report(year: int | None = None) -> dict:
+def dashboard_report(
+    year: int | None = None,
+    _admin: str = Depends(require_admin),
+) -> dict:
     year = report_year(year)
     with db() as conn:
         totals = one(
@@ -1289,7 +1386,10 @@ def dashboard_report(year: int | None = None) -> dict:
 
 
 @app.get("/api/reports/student-summary")
-def student_summary(year: int | None = None) -> list[dict]:
+def student_summary(
+    year: int | None = None,
+    _admin: str = Depends(require_admin),
+) -> list[dict]:
     year = report_year(year)
     with db() as conn:
         return all_rows(

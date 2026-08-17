@@ -48,6 +48,7 @@ import {
 import "./styles.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
+const ADMIN_TOKEN_KEY = "offense_tracker_admin_token";
 const emptyStudent = {
   student_no: "",
   first_name: "",
@@ -80,8 +81,14 @@ function fullName(item) {
 }
 
 async function api(path, options = {}) {
+  const shouldAttachAdminToken = !path.startsWith("/admin/") && !path.startsWith("/student-portal/");
+  const adminToken = shouldAttachAdminToken ? window.localStorage.getItem(ADMIN_TOKEN_KEY) : "";
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: {
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
     ...options,
   });
   if (!response.ok) {
@@ -101,8 +108,10 @@ async function api(path, options = {}) {
 async function uploadExcel(path, file) {
   const formData = new FormData();
   formData.append("file", file);
+  const adminToken = window.localStorage.getItem(ADMIN_TOKEN_KEY);
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
+    headers: adminToken ? { Authorization: `Bearer ${adminToken}` } : {},
     body: formData,
   });
   if (!response.ok) {
@@ -120,13 +129,14 @@ async function uploadExcel(path, file) {
 
 function App() {
   const [portalView, setPortalView] = useState(false);
+  const [adminToken, setAdminToken] = useState(() => window.localStorage.getItem(ADMIN_TOKEN_KEY) || "");
   const [activeTab, setActiveTab] = useState("dashboard");
   const [students, setStudents] = useState([]);
   const [offenses, setOffenses] = useState([]);
   const [incidents, setIncidents] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [studentSummary, setStudentSummary] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(adminToken));
   const [error, setError] = useState("");
   const [notification, setNotification] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -154,6 +164,7 @@ function App() {
   );
 
   async function loadData() {
+    if (!adminToken) return;
     setLoading(true);
     setError("");
     try {
@@ -184,14 +195,44 @@ function App() {
       setStudentSummary(summaryData);
     } catch (err) {
       setError(err.message);
+      if (err.message === "Admin login is required") {
+        window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+        setAdminToken("");
+      }
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (adminToken) {
+      loadData();
+    } else {
+      setLoading(false);
+    }
+  }, [adminToken]);
+
+  function handleAdminLogin(token) {
+    window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
+    setAdminToken(token);
+  }
+
+  function logoutAdmin() {
+    window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+    setAdminToken("");
+    setStudents([]);
+    setOffenses([]);
+    setIncidents([]);
+    setDashboard(null);
+    setStudentSummary([]);
+    setSelectedIncidentIds([]);
+    setSelectedStudentIds([]);
+    setSelectedOffenseIds([]);
+    setStudentForm(emptyStudent);
+    setOffenseForm(emptyOffense);
+    setIncidentForm(emptyIncident);
+    setError("");
+  }
 
   async function saveStudent(event) {
     event.preventDefault();
@@ -368,6 +409,15 @@ function App() {
     return <StudentPortal onBack={() => setPortalView(false)} />;
   }
 
+  if (!adminToken) {
+    return (
+      <AdminLogin
+        onLogin={handleAdminLogin}
+        onStudentPortal={() => setPortalView(true)}
+      />
+    );
+  }
+
   const tabs = [
     ["dashboard", LayoutDashboard, "Dashboard"],
     ["incidents", ClipboardList, "Incidents"],
@@ -412,6 +462,9 @@ function App() {
           <div className="topbar-actions">
             <button className="btn secondary" type="button" onClick={() => setPortalView(true)}>
               <LogIn size={18} /> Student Portal
+            </button>
+            <button className="btn danger-solid" type="button" onClick={logoutAdmin}>
+              <LogOut size={18} /> Sign out
             </button>
             <button className="btn primary" type="button" onClick={loadData} disabled={loading}>
               {loading ? <LoaderCircle className="spin" size={18} /> : <CalendarDays size={18} />}
@@ -509,6 +562,61 @@ function App() {
           confirmLabel={pendingDelete.bulk ? `Delete ${pendingDelete.kind}` : "Delete record"}
         />
       )}
+    </div>
+  );
+}
+
+function AdminLogin({ onLogin, onStudentPortal }) {
+  const [credentials, setCredentials] = useState({ username: "", password: "" });
+  const [busy, setBusy] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  async function login(event) {
+    event.preventDefault();
+    setBusy(true);
+    setLoginError("");
+    try {
+      const result = await api("/admin/login", {
+        method: "POST",
+        body: JSON.stringify(credentials),
+      });
+      setCredentials({ username: "", password: "" });
+      onLogin(result.access_token);
+    } catch (err) {
+      setLoginError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="admin-login-page">
+      <section className="admin-login-card">
+        <div className="brand login-brand">
+          <div className="brand-mark">OT</div>
+          <div>
+            <strong>Offense Tracker</strong>
+            <span>RTSagasaNHS</span>
+          </div>
+        </div>
+        <div className="admin-login-copy">
+          <span className="eyebrow">Admin access</span>
+          <h1>Sign in to tracker</h1>
+          <p>Use your tracker administrator account.</p>
+        </div>
+        {loginError && <div className="alert">{loginError}</div>}
+        <form className="portal-login-form" onSubmit={login}>
+          <label>Username<input autoComplete="username" required value={credentials.username} onChange={(event) => setCredentials({ ...credentials, username: event.target.value })} /></label>
+          <label>Password<input autoComplete="current-password" type="password" required value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} /></label>
+          <button className="btn primary" type="submit" disabled={busy}>
+            {busy ? <LoaderCircle className="spin" size={18} /> : <LogIn size={18} />}
+            {busy ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
+        <button className="btn secondary login-student-link" type="button" onClick={onStudentPortal}>
+          <GraduationCap size={18} /> Student Portal
+        </button>
+      </section>
     </div>
   );
 }
