@@ -286,6 +286,11 @@ h2 {
   gap: 14px;
 }
 
+.dashboard-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .kpi {
   min-height: 124px;
   padding: 16px;
@@ -295,6 +300,13 @@ h2 {
   box-shadow: var(--shadow);
   display: grid;
   gap: 10px;
+}
+
+.dashboard-kpis .kpi {
+  min-height: 96px;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
 }
 
 .kpi-icon {
@@ -307,16 +319,41 @@ h2 {
   background: linear-gradient(135deg, #fff1ed, #fff5cf);
 }
 
+.kpi.minor .kpi-icon {
+  color: #9a4c00;
+  background: #fff4c7;
+}
+
+.kpi.major .kpi-icon {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.kpi.monitor .kpi-icon {
+  color: #7c2d12;
+  background: #fff0dc;
+}
+
 .kpi span {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
 }
 
+.dashboard-kpis .kpi span {
+  font-size: 14px;
+}
+
 .kpi strong {
   align-self: end;
   font-size: 30px;
   line-height: 1;
+}
+
+.dashboard-kpis .kpi strong {
+  align-self: center;
+  font-size: 34px;
+  text-align: right;
 }
 
 .form-grid {
@@ -863,8 +900,8 @@ tbody tr:hover {
 
 .chart-area {
   width: 100%;
-  height: 320px;
-  padding: 16px 14px 12px 6px;
+  height: 280px;
+  padding: 14px 14px 10px 6px;
 }
 
 .chart-area .recharts-cartesian-axis-tick-value,
@@ -874,6 +911,70 @@ tbody tr:hover {
 
 .chart-area .recharts-default-tooltip {
   background: rgba(255, 255, 255, 0.97) !important;
+}
+
+.offense-rank-list {
+  min-height: 280px;
+  display: grid;
+  align-content: center;
+  gap: 13px;
+  padding: 18px 20px 20px;
+}
+
+.offense-rank-row {
+  display: grid;
+  gap: 7px;
+}
+
+.offense-rank-meta {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.rank-number {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--brand);
+  background: #fff1ed;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.offense-rank-meta strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offense-rank-meta em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.offense-rank-track {
+  height: 13px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #fff1e9;
+}
+
+.offense-rank-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand), var(--brand-2));
 }
 
 .chart-empty {
@@ -1246,7 +1347,8 @@ tbody tr:hover {
 }
 
 @media (max-width: 1180px) {
-  .kpi-grid {
+  .kpi-grid,
+  .dashboard-kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
@@ -1285,6 +1387,10 @@ tbody tr:hover {
   .portal-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .dashboard-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -1314,8 +1420,18 @@ tbody tr:hover {
 
   nav,
   .kpi-grid,
+  .dashboard-kpis,
   .portal-kpis {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-kpis .kpi {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .dashboard-kpis .kpi strong {
+    grid-column: 2;
+    text-align: left;
   }
 
   .form-grid {
@@ -1352,5 +1468,18 @@ tbody tr:hover {
   .chart-area {
     height: 290px;
     padding-inline: 2px;
+  }
+
+  .offense-rank-list {
+    min-height: 290px;
+    padding-inline: 14px;
+  }
+
+  .offense-rank-meta {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .offense-rank-meta em {
+    grid-column: 2;
   }
 }

@@ -828,25 +828,25 @@ function Dashboard({ dashboard }) {
     [],
   );
   const cards = [
-    ["Total Incidents", totals.total_incidents || 0, ClipboardList],
-    ["Minor Incidents", totals.minor_incidents || 0, BookOpen],
-    ["Major Incidents", totals.major_incidents || 0, AlertTriangle],
-    ["Active Students", totals.active_students || 0, GraduationCap],
-    ["Students with Offenses", totals.students_with_incidents || 0, Users],
-    ["Open Cases", totals.open_cases || 0, ShieldAlert],
+    ["Total Incidents", totals.total_incidents || 0, ClipboardList, "neutral"],
+    ["Minor Incidents", totals.minor_incidents || 0, BookOpen, "minor"],
+    ["Major Incidents", totals.major_incidents || 0, AlertTriangle, "major"],
+    ["Active Students", totals.active_students || 0, GraduationCap, "neutral"],
+    ["Students with Offenses", totals.students_with_incidents || 0, Users, "monitor"],
+    ["Open Cases", totals.open_cases || 0, ShieldAlert, "major"],
   ];
   return (
-    <section className="stack">
-      <div className="kpi-grid">
-        {cards.map(([label, value, Icon]) => (
-          <div className="kpi" key={label}>
+    <section className="dashboard stack">
+      <div className="kpi-grid dashboard-kpis">
+        {cards.map(([label, value, Icon, tone]) => (
+          <div className={`kpi ${tone}`} key={label}>
             <div className="kpi-icon"><Icon size={20} /></div>
             <span>{label}</span>
             <strong>{value}</strong>
           </div>
         ))}
       </div>
-      <div className="grid two">
+      <div className="grid two dashboard-charts">
         <Panel title="Monthly Incident Trend" icon={BarChart3}>
           <IncidentLineChart data={monthly} />
         </Panel>
@@ -1664,27 +1664,28 @@ function IncidentLineChart({ data }) {
 }
 
 function OffenseBarChart({ data }) {
-  const rows = data.slice(0, 6);
+  const rows = data.slice(0, 5);
   if (!rows.length) return <EmptyChart />;
+  const maxCount = Math.max(...rows.map((row) => Number(row.incident_count) || 0), 1);
 
   return (
-    <div className="chart-area" role="img" aria-label="Bar graph showing the most common offenses">
-      <ResponsiveContainer width="100%" height="100%">
-        <RechartsBarChart data={rows} layout="vertical" margin={{ top: 8, right: 22, left: 16, bottom: 4 }} accessibilityLayer>
-          <CartesianGrid stroke="#f1dfd7" strokeDasharray="4 4" horizontal={false} />
-          <XAxis type="number" allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#765e58", fontSize: 12 }} />
-          <YAxis
-            type="category"
-            dataKey="name"
-            width={122}
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: "#563d38", fontSize: 11 }}
-          />
-          <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: "#fff5ef" }} />
-          <Bar dataKey="incident_count" name="Incidents" fill="#f97316" radius={[0, 8, 8, 0]} maxBarSize={28} />
-        </RechartsBarChart>
-      </ResponsiveContainer>
+    <div className="offense-rank-list" role="list" aria-label="Most common offenses">
+      {rows.map((row, index) => {
+        const count = Number(row.incident_count) || 0;
+        const width = `${Math.max(8, Math.round((count / maxCount) * 100))}%`;
+        return (
+          <div className="offense-rank-row" role="listitem" key={`${row.name}-${index}`}>
+            <div className="offense-rank-meta">
+              <span className="rank-number">{index + 1}</span>
+              <strong title={row.name}>{row.name}</strong>
+              <em>{count} incident{count === 1 ? "" : "s"}</em>
+            </div>
+            <div className="offense-rank-track" aria-hidden="true">
+              <span style={{ width }} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
