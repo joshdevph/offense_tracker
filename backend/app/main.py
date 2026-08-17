@@ -620,6 +620,11 @@ def admin_login(payload: AdminLoginIn) -> dict:
     }
 
 
+@app.get("/api/admin/me")
+def admin_me(username: str = Depends(require_admin)) -> dict:
+    return {"username": username}
+
+
 @app.post("/api/student-portal/login")
 def student_portal_login(payload: StudentLoginIn) -> dict:
     with db() as conn:

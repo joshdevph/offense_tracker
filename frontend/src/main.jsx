@@ -85,7 +85,7 @@ function studentOptionLabel(student) {
 }
 
 async function api(path, options = {}) {
-  const shouldAttachAdminToken = !path.startsWith("/admin/") && !path.startsWith("/student-portal/");
+  const shouldAttachAdminToken = path !== "/admin/login" && !path.startsWith("/student-portal/");
   const adminToken = shouldAttachAdminToken ? window.localStorage.getItem(ADMIN_TOKEN_KEY) : "";
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -134,13 +134,15 @@ async function uploadExcel(path, file) {
 function App() {
   const [portalView, setPortalView] = useState(false);
   const [adminToken, setAdminToken] = useState(() => window.localStorage.getItem(ADMIN_TOKEN_KEY) || "");
+  const [adminVerified, setAdminVerified] = useState(false);
+  const [checkingAdmin, setCheckingAdmin] = useState(Boolean(adminToken));
   const [activeTab, setActiveTab] = useState("dashboard");
   const [students, setStudents] = useState([]);
   const [offenses, setOffenses] = useState([]);
   const [incidents, setIncidents] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [studentSummary, setStudentSummary] = useState([]);
-  const [loading, setLoading] = useState(Boolean(adminToken));
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notification, setNotification] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -167,8 +169,27 @@ function App() {
     [],
   );
 
+  function clearAdminSession() {
+    window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+    setAdminToken("");
+    setAdminVerified(false);
+    setCheckingAdmin(false);
+    setStudents([]);
+    setOffenses([]);
+    setIncidents([]);
+    setDashboard(null);
+    setStudentSummary([]);
+    setSelectedIncidentIds([]);
+    setSelectedStudentIds([]);
+    setSelectedOffenseIds([]);
+    setStudentForm(emptyStudent);
+    setOffenseForm(emptyOffense);
+    setIncidentForm(emptyIncident);
+    setError("");
+  }
+
   async function loadData() {
-    if (!adminToken) return;
+    if (!adminToken || !adminVerified) return;
     setLoading(true);
     setError("");
     try {
@@ -200,8 +221,7 @@ function App() {
     } catch (err) {
       setError(err.message);
       if (err.message === "Admin login is required") {
-        window.localStorage.removeItem(ADMIN_TOKEN_KEY);
-        setAdminToken("");
+        clearAdminSession();
       }
     } finally {
       setLoading(false);
@@ -209,12 +229,36 @@ function App() {
   }
 
   useEffect(() => {
-    if (adminToken) {
-      loadData();
-    } else {
+    if (!adminToken) {
+      setAdminVerified(false);
+      setCheckingAdmin(false);
       setLoading(false);
+      return undefined;
     }
+
+    let active = true;
+    async function verifyAdmin() {
+      setCheckingAdmin(true);
+      setError("");
+      try {
+        await api("/admin/me");
+        if (!active) return;
+        setAdminVerified(true);
+      } catch {
+        if (active) clearAdminSession();
+      } finally {
+        if (active) setCheckingAdmin(false);
+      }
+    }
+    verifyAdmin();
+    return () => {
+      active = false;
+    };
   }, [adminToken]);
+
+  useEffect(() => {
+    if (adminToken && adminVerified) loadData();
+  }, [adminToken, adminVerified]);
 
   function handleAdminLogin(token) {
     window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
@@ -222,20 +266,7 @@ function App() {
   }
 
   function logoutAdmin() {
-    window.localStorage.removeItem(ADMIN_TOKEN_KEY);
-    setAdminToken("");
-    setStudents([]);
-    setOffenses([]);
-    setIncidents([]);
-    setDashboard(null);
-    setStudentSummary([]);
-    setSelectedIncidentIds([]);
-    setSelectedStudentIds([]);
-    setSelectedOffenseIds([]);
-    setStudentForm(emptyStudent);
-    setOffenseForm(emptyOffense);
-    setIncidentForm(emptyIncident);
-    setError("");
+    clearAdminSession();
   }
 
   async function saveStudent(event) {
@@ -413,9 +444,10 @@ function App() {
     return <StudentPortal onBack={() => setPortalView(false)} />;
   }
 
-  if (!adminToken) {
+  if (!adminToken || !adminVerified) {
     return (
       <AdminLogin
+        busy={checkingAdmin}
         onLogin={handleAdminLogin}
         onStudentPortal={() => setPortalView(true)}
       />
@@ -570,10 +602,11 @@ function App() {
   );
 }
 
-function AdminLogin({ onLogin, onStudentPortal }) {
+function AdminLogin({ busy: checkingSession = false, onLogin, onStudentPortal }) {
   const [credentials, setCredentials] = useState({ username: "", password: "" });
   const [busy, setBusy] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const isBusy = busy || checkingSession;
 
   async function login(event) {
     event.preventDefault();
@@ -606,18 +639,18 @@ function AdminLogin({ onLogin, onStudentPortal }) {
         <div className="admin-login-copy">
           <span className="eyebrow">Admin access</span>
           <h1>Sign in to tracker</h1>
-          <p>Use your tracker administrator account.</p>
+          <p>{checkingSession ? "Checking admin session..." : "Use your tracker administrator account."}</p>
         </div>
         {loginError && <div className="alert">{loginError}</div>}
         <form className="portal-login-form" onSubmit={login}>
-          <label>Username<input autoComplete="username" required value={credentials.username} onChange={(event) => setCredentials({ ...credentials, username: event.target.value })} /></label>
-          <label>Password<input autoComplete="current-password" type="password" required value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} /></label>
-          <button className="btn primary" type="submit" disabled={busy}>
-            {busy ? <LoaderCircle className="spin" size={18} /> : <LogIn size={18} />}
-            {busy ? "Signing in..." : "Sign in"}
+          <label>Username<input autoComplete="username" required disabled={checkingSession} value={credentials.username} onChange={(event) => setCredentials({ ...credentials, username: event.target.value })} /></label>
+          <label>Password<input autoComplete="current-password" type="password" required disabled={checkingSession} value={credentials.password} onChange={(event) => setCredentials({ ...credentials, password: event.target.value })} /></label>
+          <button className="btn primary" type="submit" disabled={isBusy}>
+            {isBusy ? <LoaderCircle className="spin" size={18} /> : <LogIn size={18} />}
+            {checkingSession ? "Checking..." : busy ? "Signing in..." : "Sign in"}
           </button>
         </form>
-        <button className="btn secondary login-student-link" type="button" onClick={onStudentPortal}>
+        <button className="btn secondary login-student-link" type="button" onClick={onStudentPortal} disabled={checkingSession}>
           <GraduationCap size={18} /> Student Portal
         </button>
       </section>
