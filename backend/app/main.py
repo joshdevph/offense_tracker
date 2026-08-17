@@ -196,6 +196,74 @@ IMPORT_HEADERS = {
     "reporter": "reported_by",
 }
 
+MINOR_SANCTION_GUIDE = (
+    "1st offense: Class Adviser oral reprimand/counselling; "
+    "2nd offense: refer to School Discipline Officer for oral and written reprimand; "
+    "3rd offense: refer to Guidance Counselor for school/home therapy; "
+    "4th offense: three-day suspension with counselling; "
+    "5th offense: refer to the Principal."
+)
+MAJOR_SANCTION_GUIDE = (
+    "Refer to the School Discipline Officer, Guidance Counselor, and Principal "
+    "for investigation and appropriate disciplinary action."
+)
+OFFICIAL_OFFENSES = [
+    ("MAJ-001", "Bullying (Physical, Emotional, Mental, Cyber Bullying)", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-002", "Cheating / Dishonesty", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-003", "Stealing / Theft / Robbery", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-004", "Assaulting a teacher, fellow learner, or school authority", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-005", "Smoking inside the school campus or within 100 meters of the school perimeter", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-006", "Vandalism or destruction of school property", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-007", "Gambling of any sort", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-008", "Drinking intoxicants/liquor, entering under the influence, or bringing alcoholic beverages", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-009", "Carrying or concealing deadly weapons or instruments", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-010", "Extortion or asking money or in-kind items from others", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-011", "Fighting or causing injury", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-012", "Hazing whether outside or inside the school campus", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-013", "Sexual abuse, immorality, or illicit relationships", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-014", "Instigating, leading, or participating in activities leading to stoppage of classes", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-015", "Preventing or threatening learners, faculty, or school authorities from discharging duties", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-016", "Forging or tampering with school records or transfer forms", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-017", "Truancy (Jumping over the fence)", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-018", "Joining fraternities, sororities, or gangs", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MAJ-019", "Watching or keeping pornographic materials", "Major", 5, MAJOR_SANCTION_GUIDE),
+    ("MIN-001", "Absenteeism, cutting of classes, and tardiness", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-002", "Failure to wear prescribed uniform", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-003", "Wearing caps inside the school campus, especially inside the classroom", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-004", "Wearing civilian clothes on uniform days", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-005", "Wearing earrings for boys or multiple earrings for girls", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-006", "Outlandish attires, over-accessories, or body piercing", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-007", "Use of profane language or swearing", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-008", "Littering inside the school campus", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-009", "Using cellphones and other gadgets during class hours", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-010", "PDA (Public Display of Affection)", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-011", "Unruly behavior during assemblies, school activities, religious services, or flag ceremony", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-012", "Going to restricted places", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-013", "Refusal to wear or display school ID", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-014", "Placing stickers and other objects on school ID", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-015", "Wearing another student's ID", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-016", "Spending for personal use funds entrusted to him or her", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-017", "Refusing to obey student leaders discharging duty or representing authority", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-018", "Destroying another learner's belongings or blocking another person's path", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-019", "Disrespect to the Philippine Flag or singing of the National Anthem", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-020", "Spitting everywhere", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-021", "Putting on make-up and lipstick", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-022", "Urinating elsewhere or in inappropriate places", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-023", "Loitering or staying inside/outside the school campus during class hours", "Minor", 1, MINOR_SANCTION_GUIDE),
+    ("MIN-024", "Other analogous acts that may endanger or threaten learners or school personnel", "Minor", 1, MINOR_SANCTION_GUIDE),
+]
+LEGACY_OFFENSE_CODE_MAP = {
+    "MIN-003": "MIN-011",
+    "MIN-004": "MIN-024",
+    "MIN-005": "MIN-009",
+    "MIN-006": "MIN-023",
+    "MAJ-002": "MAJ-011",
+    "MAJ-003": "MAJ-006",
+    "MAJ-004": "MAJ-002",
+    "MAJ-005": "MAJ-017",
+    "MAJ-006": "MAJ-009",
+}
+
 
 def clean_text(value: object) -> str:
     if value is None:
@@ -328,37 +396,51 @@ def init_db() -> None:
         student_columns = {column["name"] for column in all_rows(conn, "PRAGMA table_info(students)")}
         if "password_hash" not in student_columns:
             conn.execute("ALTER TABLE students ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
+        sync_offense_catalog(conn)
     seed_if_empty()
     with db() as conn:
         ensure_student_passwords(conn)
+
+
+def sync_offense_catalog(conn: sqlite3.Connection) -> None:
+    for legacy_code, official_code in LEGACY_OFFENSE_CODE_MAP.items():
+        conn.execute(
+            "UPDATE offenses SET code = ? WHERE code = ?",
+            (f"LEGACY-{legacy_code}", legacy_code),
+        )
+
+    for code, name, category, severity_points, recommended_action in OFFICIAL_OFFENSES:
+        conn.execute(
+            """
+            INSERT INTO offenses (code, name, category, severity_points, recommended_action, active)
+            VALUES (?, ?, ?, ?, ?, 1)
+            ON CONFLICT(code) DO UPDATE SET
+                name = excluded.name,
+                category = excluded.category,
+                severity_points = excluded.severity_points,
+                recommended_action = excluded.recommended_action,
+                active = 1,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (code, name, category, severity_points, recommended_action),
+        )
+
+    for legacy_code, official_code in LEGACY_OFFENSE_CODE_MAP.items():
+        legacy = one(conn, "SELECT id FROM offenses WHERE code = ?", (f"LEGACY-{legacy_code}",))
+        official = one(conn, "SELECT id FROM offenses WHERE code = ?", (official_code,))
+        if not legacy or not official:
+            continue
+        conn.execute(
+            "UPDATE incidents SET offense_id = ? WHERE offense_id = ?",
+            (official["id"], legacy["id"]),
+        )
+        conn.execute("DELETE FROM offenses WHERE id = ?", (legacy["id"],))
 
 
 def seed_if_empty() -> None:
     with db() as conn:
         if one(conn, "SELECT COUNT(*) AS count FROM students")["count"]:
             return
-
-        offenses = [
-            ("MIN-001", "Tardiness", "Minor", 1, "Verbal warning and attendance note"),
-            ("MIN-002", "Incomplete uniform", "Minor", 1, "Reminder and parent note if repeated"),
-            ("MIN-003", "Classroom disruption", "Minor", 2, "Teacher conference"),
-            ("MIN-004", "Failure to submit homework", "Minor", 1, "Academic reminder"),
-            ("MIN-005", "Use of phone during class", "Minor", 2, "Confiscation until end of day"),
-            ("MIN-006", "Loitering during class time", "Minor", 2, "Guidance referral if repeated"),
-            ("MAJ-001", "Bullying or harassment", "Major", 5, "Guidance office and parent conference"),
-            ("MAJ-002", "Fighting", "Major", 5, "Disciplinary conference"),
-            ("MAJ-003", "Vandalism", "Major", 4, "Restitution and parent conference"),
-            ("MAJ-004", "Cheating / academic dishonesty", "Major", 4, "Academic integrity review"),
-            ("MAJ-005", "Leaving campus without permission", "Major", 5, "Administrative referral"),
-            ("MAJ-006", "Possession of prohibited item", "Major", 5, "Administrative investigation"),
-        ]
-        conn.executemany(
-            """
-            INSERT INTO offenses (code, name, category, severity_points, recommended_action)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            offenses,
-        )
 
         first_names = [
             "Alyssa", "Marco", "Janelle", "Rafael", "Bianca", "Luis", "Trisha", "Enzo",
