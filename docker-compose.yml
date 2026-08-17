@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: rtsagasanhs-offense-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_PATH: /app/data/offense_tracker.db
+      CORS_ORIGINS: "*"
+      PORTAL_SECRET_KEY: "${PORTAL_SECRET_KEY:-offense-tracker-local-development-key}"
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: rtsagasanhs-offense-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
