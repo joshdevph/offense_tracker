@@ -80,6 +80,10 @@ function fullName(item) {
   return `${item.first_name} ${item.last_name}`;
 }
 
+function studentOptionLabel(student) {
+  return `${student.student_no} - ${fullName(student)} (${student.grade}-${student.section})`;
+}
+
 async function api(path, options = {}) {
   const shouldAttachAdminToken = !path.startsWith("/admin/") && !path.startsWith("/student-portal/");
   const adminToken = shouldAttachAdminToken ? window.localStorage.getItem(ADMIN_TOKEN_KEY) : "";
@@ -843,6 +847,104 @@ function BulkDeleteControls({ count, selectedIds, singularLabel, onDelete, onCle
   );
 }
 
+function StudentSearchPicker({ students, value, onChange }) {
+  const selectedStudent = useMemo(
+    () => students.find((student) => String(student.id) === String(value)),
+    [students, value],
+  );
+  const [query, setQuery] = useState("");
+  const [focused, setFocused] = useState(false);
+  const keepTypedQuery = useRef(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (selectedStudent) {
+      setQuery(studentOptionLabel(selectedStudent));
+      keepTypedQuery.current = false;
+      return;
+    }
+    if (!keepTypedQuery.current) {
+      setQuery("");
+    }
+    keepTypedQuery.current = false;
+  }, [selectedStudent, value]);
+
+  useEffect(() => {
+    inputRef.current?.setCustomValidity(value ? "" : "Select a student from the results.");
+  }, [value]);
+
+  const matches = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return students.slice(0, 8);
+    return students
+      .filter((student) => {
+        const haystack = [
+          student.student_no,
+          student.first_name,
+          student.last_name,
+          `${student.grade}-${student.section}`,
+          student.adviser,
+        ].join(" ").toLowerCase();
+        return haystack.includes(normalized);
+      })
+      .slice(0, 8);
+  }, [query, students]);
+
+  function selectStudent(student) {
+    setQuery(studentOptionLabel(student));
+    setFocused(false);
+    onChange(String(student.id));
+  }
+
+  function updateQuery(event) {
+    const nextQuery = event.target.value;
+    setQuery(nextQuery);
+    const exactMatch = students.find(
+      (student) => studentOptionLabel(student).toLowerCase() === nextQuery.trim().toLowerCase(),
+    );
+    keepTypedQuery.current = true;
+    onChange(exactMatch ? String(exactMatch.id) : "");
+  }
+
+  return (
+    <label className="student-search-label">
+      Student
+      <div className="student-search">
+        <Search className="student-search-icon" size={17} />
+        <input
+          ref={inputRef}
+          required
+          type="search"
+          placeholder="Search name or student no."
+          value={query}
+          onChange={updateQuery}
+          onFocus={() => setFocused(true)}
+          onBlur={() => window.setTimeout(() => setFocused(false), 120)}
+        />
+        {focused && (
+          <div className="student-search-results" role="listbox">
+            {matches.length > 0 ? matches.map((student) => (
+              <button
+                key={student.id}
+                type="button"
+                role="option"
+                aria-selected={String(student.id) === String(value)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectStudent(student)}
+              >
+                <strong>{student.student_no}</strong>
+                <span>{fullName(student)} · Grade {student.grade}-{student.section}</span>
+              </button>
+            )) : (
+              <div className="student-search-empty">No matching students</div>
+            )}
+          </div>
+        )}
+      </div>
+    </label>
+  );
+}
+
 function Incidents({
   incidents,
   students,
@@ -906,10 +1008,11 @@ function Incidents({
             />
           )}
           <label>Date<input type="date" value={form.incident_date} onChange={(e) => setForm({ ...form, incident_date: e.target.value })} /></label>
-          <label>Student<select required value={form.student_id} onChange={(e) => setForm({ ...form, student_id: e.target.value })}>
-            <option value="">Select student</option>
-            {students.map((student) => <option key={student.id} value={student.id}>{student.student_no} - {fullName(student)} ({student.grade}-{student.section})</option>)}
-          </select></label>
+          <StudentSearchPicker
+            students={students}
+            value={form.student_id}
+            onChange={(studentId) => setForm({ ...form, student_id: studentId })}
+          />
           <label>Offense<select required value={form.offense_id} onChange={(e) => setForm({ ...form, offense_id: e.target.value, action_taken: "" })}>
             <option value="">Select offense</option>
             {offenses.filter((item) => item.active).map((offense) => <option key={offense.id} value={offense.id}>{offense.code} - {offense.name}</option>)}
